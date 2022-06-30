@@ -3,3 +3,4 @@ stencil.fpga
 *.o
 dev_image.prj/
 *.tgz
+dev_image.a
