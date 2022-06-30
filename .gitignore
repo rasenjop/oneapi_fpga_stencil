@@ -1,0 +1,5 @@
+stencil.fpga_emu
+stencil.fpga
+*.o
+dev_image.prj/
+*.tgz
