@@ -41,6 +41,7 @@ sycl::event RunKernel(queue& q, buffer<float,1>& b_input, buffer<float,1>& b_mas
       // Kernel executes with pipeline parallelism on the FPGA.
       // Use kernel_args_restrict to specify that input, mask, and output do not alias.
       h.single_task<Stencil>([=]() [[intel::kernel_args_restrict]] {
+          [[intel::fpga_register]]
           float local_mask[9];
           for(int i=0; i<9; i++) local_mask[i]=mask[i];
           // the shift register
