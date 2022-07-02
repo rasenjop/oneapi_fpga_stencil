@@ -34,7 +34,7 @@ sycl::event RunKernel(queue& q, buffer<float,1>& b_input, buffer<float,1>& b_mas
       ext::oneapi::accessor_property_list HBM0{ext::intel::buffer_location<0>};
       ext::oneapi::accessor_property_list HBM0_noInit{no_init,ext::intel::buffer_location<0>};
       // Data accessors
-      accessor input{b_input, h, read_only, HBM0};
+      accessor input{b_input, h, /*read_only,*/ HBM0};
       accessor mask{b_mask, h, read_only};
       accessor output{b_output, h, write_only, HBM0_noInit};
 
@@ -43,8 +43,9 @@ sycl::event RunKernel(queue& q, buffer<float,1>& b_input, buffer<float,1>& b_mas
       h.single_task<Stencil>([=]() [[intel::kernel_args_restrict]] {
           float local_mask[9];
           for(int i=0; i<9; i++) local_mask[i]=mask[i];
-          float sr[2*kCols+3];
-          ShiftReg<float,2*kCols+3> sr2;
+          // the shift register
+          [[intel::fpga_register]]
+          fpga_tools::ShiftReg<float, 2*kCols+3> sr;
           for(int i=0; i<2*kCols+3; i++) sr[i]=input[i];
           for(int i=1; i<kRows-1; i++){
             int crow_base=i*kCols;
@@ -61,15 +62,11 @@ sycl::event RunKernel(queue& q, buffer<float,1>& b_input, buffer<float,1>& b_mas
                           local_mask[8] * sr[2*kCols + 2 ] ;
               output[crow_base+j] = tmp;
               //Shift
-              fpga_tools::UnrolledLoop<2*kCols+2>([&](auto k){sr[k]=sr[k+1];});
-              //for(int k=0; k<2*kCols+2; k++) sr[k]=sr[k+1];
-              sr[2*kCols+2]=input[nrow_base+2+j];
+              sr.shiftSingleVal<1>(input[nrow_base+2+j]);
             }
             //two shifts that were missing because we skip last column and first one
-            fpga_tools::UnrolledLoop<2*kCols+1>([&](auto k){sr[k]=sr[k+2];});
-            //for(int k=0; k<2*kCols+2; k++) sr[k]=sr[k+1];
-            sr[2*kCols+1]=input[nrow_base+kCols+1];
-            sr[2*kCols+2]=input[nrow_base+kCols+2];
+            sr.shiftSingleVal<1>(input[nrow_base+kCols+1]);
+            sr.shiftSingleVal<1>(input[nrow_base+kCols+2]);
           }
       });
     });
