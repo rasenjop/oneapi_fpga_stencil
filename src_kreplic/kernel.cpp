@@ -24,15 +24,17 @@
 
 // Forward declare the kernel names in the global scope. This FPGA best practice
 // reduces compiler name mangling in the optimization reports.
-class Stencil;
+template <int Replica> class Stencil;
 //RunKernel(q, d_input, d_mask, d_output);
+
+template <int Replica, int NumReplicas>
 sycl::event RunKernel(queue& q, buffer<float,1>& b_input, buffer<float,1>& b_mask,
                buffer<float,1>& b_output){
     // submit the kernel
     auto e = q.submit([&](handler &h) {
       //Properties for HBM
-      ext::oneapi::accessor_property_list HBM0{ext::intel::buffer_location<0>};
-      ext::oneapi::accessor_property_list HBM0_noInit{no_init,ext::intel::buffer_location<0>};
+      ext::oneapi::accessor_property_list HBM0{ext::intel::buffer_location<Replica>};
+      ext::oneapi::accessor_property_list HBM0_noInit{no_init,ext::intel::buffer_location<Replica>};
       // Data accessors
       accessor input{b_input, h, /*read_only,*/ HBM0};
       accessor mask{b_mask, h, read_only};
@@ -40,15 +42,18 @@ sycl::event RunKernel(queue& q, buffer<float,1>& b_input, buffer<float,1>& b_mas
 
       // Kernel executes with pipeline parallelism on the FPGA.
       // Use kernel_args_restrict to specify that input, mask, and output do not alias.
-      h.single_task<Stencil>([=]() [[intel::kernel_args_restrict]] {
+      h.single_task<Stencil<Replica>>([=]() [[intel::kernel_args_restrict]] {
           [[intel::fpga_register]]
           float local_mask[9];
           for(int i=0; i<9; i++) local_mask[i]=mask[i];
+          //[begin,end) traverses the updated rows in output 
+          constexpr int begin = Replica * (kRows-2) / NumReplicas + 1;
+          constexpr int end = (Replica+1) * (kRows-2) / NumReplicas + 1;
           // the shift register
           [[intel::fpga_register]]
           fpga_tools::ShiftReg<float, 2*kCols+3> sr;
-          for(int i=0; i<2*kCols+3; i++) sr[i]=input[i];
-          for(int i=1; i<kRows-1; i++){
+          for(int i=0; i<2*kCols+3; i++) sr[i]=input[(begin-1)*kCols+i];
+          for(int i=begin; i<end; i++){
             int crow_base=i*kCols;
             int nrow_base = crow_base + kCols;
             for(int j=1; j<kCols-1; j++){

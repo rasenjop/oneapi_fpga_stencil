@@ -23,7 +23,7 @@ using namespace sycl;
 
 // the array size of input and output matrix
 constexpr size_t kRows=128*512;
-constexpr size_t kCols=128;
+constexpr size_t kCols=256;
 constexpr size_t kArraySize = kRows * kCols;
 
 static void ReportTime(const std::string &msg, event e) {
@@ -39,23 +39,10 @@ static void ReportTime(const std::string &msg, event e) {
 // reduces compiler name mangling in the optimization reports.
 template <int Replica> class Stencil;
 //RunKernel(q, d_input, d_mask, d_output);
-using FloatVector = std::vector<float,oneapi::tbb::cache_aligned_allocator<float>>; 
 
 template <int Replica, int NumReplicas>
-sycl::event RunKernel(queue& q, FloatVector& in, FloatVector& m,
-               FloatVector& out){
-
-    //[begin,end) traverses the updated rows in output 
-    constexpr int begin = Replica * (kRows-2) / NumReplicas + 1;
-    constexpr int end = (Replica+1) * (kRows-2) / NumReplicas + 1;
-    // create the device buffers
-    buffer b_input{in.begin()+(begin-1)*kCols, in.begin()+(end+1)*kCols};
-    buffer b_mask{m};
-    buffer b_output{out.begin()+begin*kCols, out.begin()+end*kCols};
-    b_output.set_final_data(out.begin()+begin*kCols);
-    b_output.set_write_back();
-    //printf("Replica: %d -> begin:%d; end:%d;   buffer_b:%d; buffer_e:%d\n", Replica,
-    //begin,end, (begin-1)*kCols, (end+1)*kCols);
+sycl::event RunKernel(queue& q, buffer<float,1>& b_input, buffer<float,1>& b_mask,
+               buffer<float,1>& b_output){
     // submit the kernel
     auto e = q.submit([&](handler &h) {
       //Properties for HBM
@@ -72,14 +59,15 @@ sycl::event RunKernel(queue& q, FloatVector& in, FloatVector& m,
           [[intel::fpga_register]]
           float local_mask[9];
           for(int i=0; i<9; i++) local_mask[i]=mask[i];
-
+          //[begin,end) traverses the updated rows in output 
+          constexpr int begin = Replica * (kRows-2) / NumReplicas + 1;
+          constexpr int end = (Replica+1) * (kRows-2) / NumReplicas + 1;
           // the shift register
           [[intel::fpga_register]]
           fpga_tools::ShiftReg<float, 2*kCols+3> sr;
-          for(int i=0; i<2*kCols+3; i++) sr[i]=input[i];
-          for(int i=1; i<end-begin+1; i++){
+          for(int i=0; i<2*kCols+3; i++) sr[i]=input[(begin-1)*kCols+i];
+          for(int i=begin; i<end; i++){
             int crow_base=i*kCols;
-            int prow_base = crow_base - kCols;
             int nrow_base = crow_base + kCols;
             for(int j=1; j<kCols-1; j++){
               float tmp = local_mask[0] * sr[0           ] + 
@@ -91,7 +79,7 @@ sycl::event RunKernel(queue& q, FloatVector& in, FloatVector& m,
                           local_mask[6] * sr[2*kCols     ] +
                           local_mask[7] * sr[2*kCols + 1 ] +
                           local_mask[8] * sr[2*kCols + 2 ] ;
-              output[prow_base+j] = tmp;
+              output[crow_base+j] = tmp;
               //Shift
               sr.shiftSingleVal<1>(input[nrow_base+2+j]);
             }
@@ -103,6 +91,8 @@ sycl::event RunKernel(queue& q, FloatVector& in, FloatVector& m,
     });
     return e;
 }
+
+using FloatVector = std::vector<float,oneapi::tbb::cache_aligned_allocator<float>>; 
 
 // the tolerance used in floating point comparisons
 constexpr float kTol = 0.001;
@@ -152,11 +142,16 @@ int main() {
     auto prop_list = property_list{property::queue::enable_profiling()};
     queue q(device_selector, dpc_common::exception_handler, prop_list);
 
+    // create the device buffers
+    buffer d_input{input};
+    buffer d_mask{mask};
+    buffer d_output{output};
+
     // The definition of this function is in a different compilation unit,
     // so host and device code can be separately compiled.
     auto start = std::chrono::high_resolution_clock::now();
-    auto e0 = RunKernel<0,2>(q, input, mask, output);
-    auto e1 = RunKernel<1,2>(q, input, mask, output);
+    auto e0 = RunKernel<0,2>(q, d_input, d_mask, d_output);
+    auto e1 = RunKernel<1,2>(q, d_input, d_mask, d_output);
     q.wait();
     auto end = std::chrono::high_resolution_clock::now();
     std::cout << "Time FPGA: "<< std::chrono::duration<double,std::milli>(end - start).count() << " ms.\n";

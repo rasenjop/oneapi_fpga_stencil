@@ -54,8 +54,8 @@ sycl::event RunKernel(queue& q, FloatVector& in, FloatVector& m,
     buffer b_output{out.begin()+begin*kCols, out.begin()+end*kCols};
     b_output.set_final_data(out.begin()+begin*kCols);
     b_output.set_write_back();
-    //printf("Replica: %d -> begin:%d; end:%d;   buffer_b:%d; buffer_e:%d\n", Replica,
-    //begin,end, (begin-1)*kCols, (end+1)*kCols);
+    printf("Replica: %d -> begin:%d; end:%d;   buffer_b:%d; buffer_e:%d\n", Replica,
+    begin,end, (begin-1)*kCols, (end+1)*kCols);
     // submit the kernel
     auto e = q.submit([&](handler &h) {
       //Properties for HBM
