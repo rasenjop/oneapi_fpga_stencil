@@ -4,3 +4,7 @@ stencil.fpga
 dev_image.prj/
 *.tgz
 dev_image.a
+stencil.a
+stencil.fpga.prj
+settings.json
+

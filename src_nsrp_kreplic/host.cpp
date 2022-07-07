@@ -22,17 +22,17 @@
 using namespace sycl;
 
 // the array size of input and output matrix
-constexpr size_t kRows=128*512;
-constexpr size_t kCols=128;
+constexpr size_t kRows= 1024*32;
+constexpr size_t kCols= 1024;
 constexpr size_t kArraySize = kRows * kCols;
 
-static void ReportTime(const std::string &msg, event e) {
+static void ReportTime(const std::string &msg, int k, event e) {
   cl_ulong time_start =
       e.get_profiling_info<info::event_profiling::command_start>();
   cl_ulong time_end =
       e.get_profiling_info<info::event_profiling::command_end>();
   double elapsed = (time_end - time_start) / 1e6;
-  std::cout << msg << elapsed << " milliseconds\n";
+  std::cout << msg << k<<": "<< elapsed << " milliseconds\n";
 }
 
 // Forward declare the kernel names in the global scope. This FPGA best practice
@@ -49,13 +49,12 @@ sycl::event RunKernel(queue& q, FloatVector& in, FloatVector& m,
     constexpr int begin = Replica * (kRows-2) / NumReplicas + 1;
     constexpr int end = (Replica+1) * (kRows-2) / NumReplicas + 1;
     // create the device buffers
-    buffer b_input{in.begin()+(begin-1)*kCols, in.begin()+(end+1)*kCols};
-    buffer b_mask{m};
-    buffer b_output{out.begin()+begin*kCols, out.begin()+end*kCols};
+    buffer b_input{in.begin()+(begin-1)*kCols, in.begin()+(end+1)*kCols, oneapi::tbb::cache_aligned_allocator<float>{}};
+    buffer b_mask{m, oneapi::tbb::cache_aligned_allocator<float>{}};
+    buffer b_output{out.begin()+begin*kCols, out.begin()+end*kCols, oneapi::tbb::cache_aligned_allocator<float>{}};
     b_output.set_final_data(out.begin()+begin*kCols);
     b_output.set_write_back();
-    printf("Replica: %d -> begin:%d; end:%d;   buffer_b:%d; buffer_e:%d\n", Replica,
-    begin,end, (begin-1)*kCols, (end+1)*kCols);
+    //printf("Replica: %d -> begin:%d; end:%d;   buffer_b:%d; buffer_e:%d\n", Replica,begin,end, (begin-1)*kCols, (end+1)*kCols);
     // submit the kernel
     auto e = q.submit([&](handler &h) {
       //Properties for HBM
@@ -73,31 +72,39 @@ sycl::event RunKernel(queue& q, FloatVector& in, FloatVector& m,
           float local_mask[9];
           for(int i=0; i<9; i++) local_mask[i]=mask[i];
 
-          // the shift register
+          // 3 shift registers for 3 rows
           [[intel::fpga_register]]
-          fpga_tools::ShiftReg<float, 2*kCols+3> sr;
-          for(int i=0; i<2*kCols+3; i++) sr[i]=input[i];
+          fpga_tools::ShiftReg<float, 3> sr0;
+          [[intel::fpga_register]]
+          fpga_tools::ShiftReg<float, 3> sr1;
+          [[intel::fpga_register]]
+          fpga_tools::ShiftReg<float, 3> sr2;
+
           for(int i=1; i<end-begin+1; i++){
             int crow_base=i*kCols;
             int prow_base = crow_base - kCols;
             int nrow_base = crow_base + kCols;
+            for(int k=0; k<3; k++) {
+              sr0[k]=input[prow_base+k];
+              sr1[k]=input[crow_base+k];
+              sr2[k]=input[nrow_base+k];
+            }
             for(int j=1; j<kCols-1; j++){
-              float tmp = local_mask[0] * sr[0           ] + 
-                          local_mask[1] * sr[1           ] +
-                          local_mask[2] * sr[2           ] +
-                          local_mask[3] * sr[kCols       ] +
-                          local_mask[4] * sr[kCols + 1   ] +
-                          local_mask[5] * sr[kCols + 2   ] +
-                          local_mask[6] * sr[2*kCols     ] +
-                          local_mask[7] * sr[2*kCols + 1 ] +
-                          local_mask[8] * sr[2*kCols + 2 ] ;
+              float tmp = local_mask[0] * sr0[0] + 
+                          local_mask[1] * sr0[1] +
+                          local_mask[2] * sr0[2] +
+                          local_mask[3] * sr1[0] +
+                          local_mask[4] * sr1[1] +
+                          local_mask[5] * sr1[2] +
+                          local_mask[6] * sr2[0] +
+                          local_mask[7] * sr2[1] +
+                          local_mask[8] * sr2[2] ;
               output[prow_base+j] = tmp;
               //Shift
-              sr.shiftSingleVal<1>(input[nrow_base+2+j]);
+              sr0.shiftSingleVal<1>(input[prow_base+2+j]);
+              sr1.shiftSingleVal<1>(input[crow_base+2+j]);
+              sr2.shiftSingleVal<1>(input[nrow_base+2+j]);
             }
-            //two shifts that were missing because we skip last column and first one
-            sr.shiftSingleVal<1>(input[nrow_base+kCols+1]);
-            sr.shiftSingleVal<1>(input[nrow_base+kCols+2]);
           }
       });
     });
@@ -129,7 +136,7 @@ void gold_stencil(const FloatVector& input, const FloatVector& mask, FloatVector
 }
 
 int main() {
-  FloatVector input(kArraySize+3); //+3 due to the shift register loading 3 elems. in advance
+  FloatVector input(kArraySize); 
   FloatVector output(kArraySize);
   FloatVector mask{2,4,2,4,1,4,2,4,2};
 
@@ -154,16 +161,18 @@ int main() {
 
     // The definition of this function is in a different compilation unit,
     // so host and device code can be separately compiled.
+    constexpr int NumRep=16;
+    std::vector<sycl::event> events(NumRep);
     auto start = std::chrono::high_resolution_clock::now();
-    auto e0 = RunKernel<0,2>(q, input, mask, output);
-    auto e1 = RunKernel<1,2>(q, input, mask, output);
+    fpga_tools::UnrolledLoop<NumRep>([&](auto k){
+      events[k] = RunKernel<k,NumRep>(q, input, mask, output);});
     q.wait();
     auto end = std::chrono::high_resolution_clock::now();
     std::cout << "Time FPGA: "<< std::chrono::duration<double,std::milli>(end - start).count() << " ms.\n";
-    ReportTime("FPGA Stencil with HBM. Time IP0: ",e0);
-    ReportTime("FPGA Stencil with HBM. Time IP1: ",e1);
+    fpga_tools::UnrolledLoop<NumRep>([&](auto k){
+      ReportTime("FPGA Stencil with HBM. Time IP ",k,events[k]);});
 
- } catch (exception const &e0) {
+  } catch (exception const &e0) {
     // Catches exceptions in the host code
     std::cerr << "Caught a SYCL host exception:\n" << e0.what() << "\n";
 

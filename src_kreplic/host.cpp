@@ -49,9 +49,9 @@ sycl::event RunKernel(queue& q, FloatVector& in, FloatVector& m,
     constexpr int begin = Replica * (kRows-2) / NumReplicas + 1;
     constexpr int end = (Replica+1) * (kRows-2) / NumReplicas + 1;
     // create the device buffers
-    buffer b_input{in.begin()+(begin-1)*kCols, in.begin()+(end+1)*kCols};
-    buffer b_mask{m};
-    buffer b_output{out.begin()+begin*kCols, out.begin()+end*kCols};
+    buffer b_input{in.begin()+(begin-1)*kCols, in.begin()+(end+1)*kCols, oneapi::tbb::cache_aligned_allocator<float>{}};
+    buffer b_mask{m,oneapi::tbb::cache_aligned_allocator<float>{}};
+    buffer b_output{out.begin()+begin*kCols, out.begin()+end*kCols, oneapi::tbb::cache_aligned_allocator<float>{}};
     b_output.set_final_data(out.begin()+begin*kCols);
     b_output.set_write_back();
     //printf("Replica: %d -> begin:%d; end:%d;   buffer_b:%d; buffer_e:%d\n", Replica,
@@ -129,7 +129,7 @@ void gold_stencil(const FloatVector& input, const FloatVector& mask, FloatVector
 }
 
 int main() {
-  FloatVector input(kArraySize+3); //+3 due to the shift register loading 3 elems. in advance
+  FloatVector input(kArraySize); 
   FloatVector output(kArraySize);
   FloatVector mask{2,4,2,4,1,4,2,4,2};
 
@@ -155,13 +155,17 @@ int main() {
     // The definition of this function is in a different compilation unit,
     // so host and device code can be separately compiled.
     auto start = std::chrono::high_resolution_clock::now();
-    auto e0 = RunKernel<0,2>(q, input, mask, output);
-    auto e1 = RunKernel<1,2>(q, input, mask, output);
+    auto e0 = RunKernel<0,4>(q, input, mask, output);
+    auto e1 = RunKernel<1,4>(q, input, mask, output);
+    auto e2 = RunKernel<2,4>(q, input, mask, output);
+    auto e3 = RunKernel<3,4>(q, input, mask, output);
     q.wait();
     auto end = std::chrono::high_resolution_clock::now();
     std::cout << "Time FPGA: "<< std::chrono::duration<double,std::milli>(end - start).count() << " ms.\n";
     ReportTime("FPGA Stencil with HBM. Time IP0: ",e0);
     ReportTime("FPGA Stencil with HBM. Time IP1: ",e1);
+    ReportTime("FPGA Stencil with HBM. Time IP0: ",e2);
+    ReportTime("FPGA Stencil with HBM. Time IP1: ",e3);
 
  } catch (exception const &e0) {
     // Catches exceptions in the host code
