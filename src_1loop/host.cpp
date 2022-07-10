@@ -58,8 +58,8 @@ sycl::event RunKernel(queue& q, FloatVector& in, FloatVector& m,
     // submit the kernel
     auto e = q.submit([&](handler &h) {
       //Properties for HBM
-      ext::oneapi::accessor_property_list HBM0{ext::intel::buffer_location<Replica>};
-      ext::oneapi::accessor_property_list HBM0_noInit{no_init,ext::intel::buffer_location<Replica>};
+      ext::oneapi::accessor_property_list HBM0{ext::intel::buffer_location<Replica*2>};
+      ext::oneapi::accessor_property_list HBM0_noInit{no_init,ext::intel::buffer_location<Replica*2+1>};
       // Data accessors
       accessor input{b_input, h, /*read_only,*/ HBM0};
       accessor mask{b_mask, h, read_only};
@@ -79,31 +79,31 @@ sycl::event RunKernel(queue& q, FloatVector& in, FloatVector& m,
           fpga_tools::ShiftReg<float, 3> sr1;
           [[intel::fpga_register]]
           fpga_tools::ShiftReg<float, 3> sr2;
+          #pragma unroll
+          for(int k=0; k<2; k++) {
+            sr0.shiftSingleVal<1>(input[k]);
+            sr1.shiftSingleVal<1>(input[k+kCols]);
+            sr2.shiftSingleVal<1>(input[k+2*kCols]);
+          }
+          for(int i=kCols; i<(end-begin+1)*kCols; i++){
+            int prow_base = i - kCols;
+            int nrow_base = i + kCols;
+            //Shift
+            sr0.shiftSingleVal<1>(input[prow_base+2]);
+            sr1.shiftSingleVal<1>(input[i+2]);
+            sr2.shiftSingleVal<1>(input[nrow_base+2]);
 
-          for(int i=1; i<end-begin+1; i++){
-            int crow_base=i*kCols;
-            int prow_base = crow_base - kCols;
-            int nrow_base = crow_base + kCols;
-            for(int k=0; k<3; k++) {
-              sr0[k]=input[prow_base+k];
-              sr1[k]=input[crow_base+k];
-              sr2[k]=input[nrow_base+k];
-            }
-            for(int j=1; j<kCols-1; j++){
-              float tmp = local_mask[0] * sr0[0] + 
-                          local_mask[1] * sr0[1] +
-                          local_mask[2] * sr0[2] +
-                          local_mask[3] * sr1[0] +
-                          local_mask[4] * sr1[1] +
-                          local_mask[5] * sr1[2] +
-                          local_mask[6] * sr2[0] +
-                          local_mask[7] * sr2[1] +
-                          local_mask[8] * sr2[2] ;
-              output[prow_base+j] = tmp;
-              //Shift
-              sr0.shiftSingleVal<1>(input[prow_base+2+j]);
-              sr1.shiftSingleVal<1>(input[crow_base+2+j]);
-              sr2.shiftSingleVal<1>(input[nrow_base+2+j]);
+            float tmp = local_mask[0] * sr0[0] + 
+                        local_mask[1] * sr0[1] +
+                        local_mask[2] * sr0[2] +
+                        local_mask[3] * sr1[0] +
+                        local_mask[4] * sr1[1] +
+                        local_mask[5] * sr1[2] +
+                        local_mask[6] * sr2[0] +
+                        local_mask[7] * sr2[1] +
+                        local_mask[8] * sr2[2] ;
+            if(((i+1)&(kCols-1)) && ((i+2)&(kCols-1)) ){
+              output[prow_base+1] = tmp;
             }
           }
       });
@@ -161,7 +161,7 @@ int main() {
 
     // The definition of this function is in a different compilation unit,
     // so host and device code can be separately compiled.
-    constexpr int NumRep=24;
+    constexpr int NumRep=16;
     std::vector<sycl::event> events(NumRep);
     auto start = std::chrono::high_resolution_clock::now();
     fpga_tools::UnrolledLoop<NumRep>([&](auto k){
