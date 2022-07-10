@@ -58,8 +58,8 @@ sycl::event RunKernel(queue& q, FloatVector& in, FloatVector& m,
     // submit the kernel
     auto e = q.submit([&](handler &h) {
       //Properties for HBM
-      ext::oneapi::accessor_property_list HBM0{ext::intel::buffer_location<Replica>};
-      ext::oneapi::accessor_property_list HBM0_noInit{no_init,ext::intel::buffer_location<Replica>};
+      ext::oneapi::accessor_property_list HBM0{ext::intel::buffer_location<Replica*2>};
+      ext::oneapi::accessor_property_list HBM0_noInit{no_init,ext::intel::buffer_location<Replica*2+1>};
       // Data accessors
       accessor input{b_input, h, /*read_only,*/ HBM0};
       accessor mask{b_mask, h, read_only};
@@ -161,7 +161,7 @@ int main() {
 
     // The definition of this function is in a different compilation unit,
     // so host and device code can be separately compiled.
-    constexpr int NumRep=24;
+    constexpr int NumRep=16;
     std::vector<sycl::event> events(NumRep);
     auto start = std::chrono::high_resolution_clock::now();
     fpga_tools::UnrolledLoop<NumRep>([&](auto k){
