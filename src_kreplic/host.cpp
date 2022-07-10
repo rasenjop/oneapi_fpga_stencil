@@ -155,17 +155,13 @@ int main() {
     // The definition of this function is in a different compilation unit,
     // so host and device code can be separately compiled.
     auto start = std::chrono::high_resolution_clock::now();
-    auto e0 = RunKernel<0,4>(q, input, mask, output);
-    auto e1 = RunKernel<1,4>(q, input, mask, output);
-    auto e2 = RunKernel<2,4>(q, input, mask, output);
-    auto e3 = RunKernel<3,4>(q, input, mask, output);
+    auto e0 = RunKernel<0,2>(q, input, mask, output);
+    auto e1 = RunKernel<1,2>(q, input, mask, output);
     q.wait();
     auto end = std::chrono::high_resolution_clock::now();
     std::cout << "Time FPGA: "<< std::chrono::duration<double,std::milli>(end - start).count() << " ms.\n";
     ReportTime("FPGA Stencil with HBM. Time IP0: ",e0);
     ReportTime("FPGA Stencil with HBM. Time IP1: ",e1);
-    ReportTime("FPGA Stencil with HBM. Time IP0: ",e2);
-    ReportTime("FPGA Stencil with HBM. Time IP1: ",e3);
 
  } catch (exception const &e0) {
     // Catches exceptions in the host code
