@@ -11,6 +11,7 @@
 #include <CL/sycl.hpp>
 #include <sycl/ext/intel/fpga_extensions.hpp>
 #include <oneapi/tbb/cache_aligned_allocator.h>
+#include <oneapi/tbb/parallel_for.h>
 
 // dpc_common.hpp can be found in the dev-utilities include folder.
 // e.g., $ONEAPI_ROOT/dev-utilities//include/dpc_common.hpp
@@ -23,7 +24,7 @@ using namespace sycl;
 
 // the array size of input and output matrix
 constexpr size_t kRows= 1024*32;
-constexpr size_t kCols= 1024*32;
+constexpr size_t kCols= 1024;
 constexpr size_t kArraySize = kRows * kCols;
 
 static void ReportTime(const std::string &msg, int k, event e) {
@@ -137,6 +138,27 @@ void gold_stencil(const FloatVector& input, const FloatVector& mask, FloatVector
   }
 }
 
+void parallel_stencil(const FloatVector& input, const FloatVector& mask, FloatVector& res){
+
+  tbb::parallel_for(1UL, static_cast<unsigned long>(kRows-1), [&](int i){
+    int crow_base=i*kCols;
+    int prow_base = crow_base - kCols;
+    int nrow_base = crow_base + kCols;
+    for(int j=1; j<kCols-1; j++){
+      float tmp = mask[0] * input[prow_base + j - 1] + 
+                  mask[1] * input[prow_base + j    ] +
+                  mask[2] * input[prow_base + j + 1] +
+                  mask[3] * input[crow_base + j - 1] +
+                  mask[4] * input[crow_base + j    ] +
+                  mask[5] * input[crow_base + j + 1] +
+                  mask[6] * input[nrow_base + j - 1] +
+                  mask[7] * input[nrow_base + j    ] +
+                  mask[8] * input[nrow_base + j + 1] ;
+      res[crow_base+j] = tmp;
+    }
+  });
+}
+
 int main() {
   FloatVector input(kArraySize); 
   FloatVector output(kArraySize);
@@ -196,7 +218,8 @@ int main() {
   // Test the results
   FloatVector gold_output(kArraySize); 
   auto start = std::chrono::high_resolution_clock::now();
-  gold_stencil(input, mask, gold_output);
+  //gold_stencil(input, mask, gold_output);
+  parallel_stencil(input, mask, gold_output);
   auto end = std::chrono::high_resolution_clock::now();
   std::cout << "Time CPU: "<< std::chrono::duration<double,std::milli>(end - start).count() << " ms.\n";
   size_t incorrect = 0;
