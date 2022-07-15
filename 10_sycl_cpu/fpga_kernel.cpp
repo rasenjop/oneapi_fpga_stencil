@@ -1,31 +1,14 @@
-//==============================================================
-// Copyright Intel Corporation
-//
-// SPDX-License-Identifier: MIT
-// =============================================================
-
-#include <iostream>
-#include <vector>
-#include <chrono>
 
 #include <CL/sycl.hpp>
 #include <sycl/ext/intel/fpga_extensions.hpp>
-#include <oneapi/tbb/cache_aligned_allocator.h>
-#include <oneapi/tbb/parallel_for.h>
 
 // dpc_common.hpp can be found in the dev-utilities include folder.
 // e.g., $ONEAPI_ROOT/dev-utilities//include/dpc_common.hpp
 #include "dpc_common.hpp"
 #include "unrolled_loop.hpp"
 #include "shift_reg.hpp"
-
-
+#include "constants.hpp"
 using namespace sycl;
-
-// the array size of input and output matrix
-constexpr size_t kRows= 1024*32;
-constexpr size_t kCols= 1024;
-constexpr size_t kArraySize = kRows * kCols;
 
 static void ReportTime(const std::string &msg, int k, event e) {
   cl_ulong time_start =
@@ -39,8 +22,6 @@ static void ReportTime(const std::string &msg, int k, event e) {
 // Forward declare the kernel names in the global scope. This FPGA best practice
 // reduces compiler name mangling in the optimization reports.
 template <int Replica> class Stencil;
-//RunKernel(q, d_input, d_mask, d_output);
-using FloatVector = std::vector<float,oneapi::tbb::cache_aligned_allocator<float>>; 
 
 template <int Replica, int NumReplicas>
 sycl::event RunKernel(queue& q, FloatVector& in, FloatVector& m,
@@ -50,9 +31,10 @@ sycl::event RunKernel(queue& q, FloatVector& in, FloatVector& m,
     constexpr int begin = Replica * (kRows-2) / NumReplicas + 1;
     constexpr int end = (Replica+1) * (kRows-2) / NumReplicas + 1;
     // create the device buffers
-    buffer b_input{in.begin()+(begin-1)*kCols, in.begin()+(end+1)*kCols, oneapi::tbb::cache_aligned_allocator<float>{}};
-    buffer b_mask{m, oneapi::tbb::cache_aligned_allocator<float>{}};
-    buffer b_output{out.begin()+begin*kCols, out.begin()+end*kCols, oneapi::tbb::cache_aligned_allocator<float>{}};
+    oneapi::tbb::cache_aligned_allocator<float> myAllocator{};
+    buffer b_input{in.begin()+(begin-1)*kCols, in.begin()+(end+1)*kCols, myAllocator};
+    buffer b_mask{m, myAllocator};
+    buffer b_output{out.begin()+begin*kCols, out.begin()+end*kCols, myAllocator};
     b_output.set_final_data(out.begin()+begin*kCols);
     b_output.set_write_back();
     //printf("Replica: %d -> begin:%d; end:%d;   buffer_b:%d; buffer_e:%d\n", Replica,begin,end, (begin-1)*kCols, (end+1)*kCols);
@@ -114,68 +96,13 @@ sycl::event RunKernel(queue& q, FloatVector& in, FloatVector& m,
     return e;
 }
 
-// the tolerance used in floating point comparisons
-constexpr float kTol = 0.001;
-
-void gold_stencil(const FloatVector& input, const FloatVector& mask, FloatVector& res){
-
-  for(int i=1; i<kRows-1; i++){
-    int crow_base=i*kCols;
-    int prow_base = crow_base - kCols;
-    int nrow_base = crow_base + kCols;
-    for(int j=1; j<kCols-1; j++){
-      float tmp = mask[0] * input[prow_base + j - 1] + 
-                  mask[1] * input[prow_base + j    ] +
-                  mask[2] * input[prow_base + j + 1] +
-                  mask[3] * input[crow_base + j - 1] +
-                  mask[4] * input[crow_base + j    ] +
-                  mask[5] * input[crow_base + j + 1] +
-                  mask[6] * input[nrow_base + j - 1] +
-                  mask[7] * input[nrow_base + j    ] +
-                  mask[8] * input[nrow_base + j + 1] ;
-      res[crow_base+j] = tmp;
-    }
-  }
-}
-
-void parallel_stencil(const FloatVector& input, const FloatVector& mask, FloatVector& res){
-
-  tbb::parallel_for(1UL, static_cast<unsigned long>(kRows-1), [&](int i){
-    int crow_base=i*kCols;
-    int prow_base = crow_base - kCols;
-    int nrow_base = crow_base + kCols;
-    for(int j=1; j<kCols-1; j++){
-      float tmp = mask[0] * input[prow_base + j - 1] + 
-                  mask[1] * input[prow_base + j    ] +
-                  mask[2] * input[prow_base + j + 1] +
-                  mask[3] * input[crow_base + j - 1] +
-                  mask[4] * input[crow_base + j    ] +
-                  mask[5] * input[crow_base + j + 1] +
-                  mask[6] * input[nrow_base + j - 1] +
-                  mask[7] * input[nrow_base + j    ] +
-                  mask[8] * input[nrow_base + j + 1] ;
-      res[crow_base+j] = tmp;
-    }
-  });
-}
-
-int main() {
-  FloatVector input(kArraySize); 
-  FloatVector output(kArraySize);
-  FloatVector mask{2,4,2,4,1,4,2,4,2};
-
-  // Fill input with random float values
-  for (size_t i = 0; i < kArraySize; i++) {
-    input[i] = rand() / (float)RAND_MAX;
-  }
-
-  // Select either the FPGA emulator or FPGA device
+void run_fpga_kernel(FloatVector& in, FloatVector& m, FloatVector& out){
+      // Select either the FPGA emulator or FPGA device
 #if defined(FPGA_EMULATOR)
   ext::intel::fpga_emulator_selector device_selector;
 #else
   ext::intel::fpga_selector device_selector;
 #endif
-
   try {
 
     // Create a queue bound to the chosen device.
@@ -196,12 +123,12 @@ int main() {
     fpga_tools::UnrolledLoop<NumRep>([&](auto k){
       ReportTime("FPGA Stencil with HBM. Time IP ",k,events[k]);});
 
-  } catch (exception const &e0) {
+  } catch (exception const &e) {
     // Catches exceptions in the host code
-    std::cerr << "Caught a SYCL host exception:\n" << e0.what() << "\n";
+    std::cerr << "Caught a SYCL host exception:\n" << e.what() << "\n";
 
     // Most likely the runtime couldn't find FPGA hardware!
-    if (e0.code().value() == CL_DEVICE_NOT_FOUND) {
+    if (e.code().value() == CL_DEVICE_NOT_FOUND) {
       std::cerr << "If you are targeting an FPGA, please ensure that your "
                    "system has a correctly configured FPGA board.\n";
       std::cerr << "Run sys_check in the oneAPI root directory to verify.\n";
@@ -210,35 +137,4 @@ int main() {
     }
     std::terminate();
   }
-
-  // At this point, the device buffers have gone out of scope and the kernel
-  // has been synchronized. Therefore, the output data (output) has been updated
-  // with the results of the kernel and is safely accesible by the host CPU.
-
-  // Test the results
-  FloatVector gold_output(kArraySize); 
-  auto start = std::chrono::high_resolution_clock::now();
-  //gold_stencil(input, mask, gold_output);
-  parallel_stencil(input, mask, gold_output);
-  auto end = std::chrono::high_resolution_clock::now();
-  std::cout << "Time CPU: "<< std::chrono::duration<double,std::milli>(end - start).count() << " ms.\n";
-  size_t incorrect = 0;
-  for (size_t i = 1; i < kRows-1; i++) {
-    for (size_t j = 1; j < kCols-1; j++) {
-      float tmp = gold_output[i*kCols+j] - output[i*kCols+j];
-      if (tmp * tmp >= kTol * kTol) {
-        incorrect++;
-        std::cout << "Error at index i=" << i << " j=" << j << " ; gold=" << gold_output[i*kCols+j] << "; out="<< output[i*kCols+j] << '\n';
-      }
-    }
-  }
-
-  // Summarize results
-  if (!incorrect) {
-    std::cout << "PASSED: results are correct\n";
-  } else {
-    std::cout << "FAILED: results are incorrect\n";
-  }
-
-  return incorrect;
 }
