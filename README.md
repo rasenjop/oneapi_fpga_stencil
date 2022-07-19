@@ -1,6 +1,13 @@
 
-# Separating Host and Device Code Compilation
-This FPGA tutorial demonstrates how to separate the compilation of a program's host code and device code to save development time.  It's recommended to read the 'fpga_compile' code sample before this one.
+# Modern C++17 features to optimize FPGA SYCL applications
+
+To get a FPGA optimized implementation the code should be as simple as possible, it should maximize the amount of information that is known at compile-time and it should use some idioms that the compiler can effectively transform into "HW" (the bitstream), like the Shift Register Pattern (SRP). This translates into cluttered source codes with repeated statements (redundancies) and error prone constructions that become a challenge in terms of maintainability. Counterintuitively, using **high-level** C++17 features (like template metaprogramming, extensive use of "constexpr" and "if constexpr", variadic templates, lambdas, non-type template parameters, etc.) can result in very efficient **low-level** FPGA implementations that at the same time reduce the programming effort and increase code maintainability.
+
+Tanner Young-Schultz recently delivered an inspiring [webinar](https://www.intel.com/content/www/us/en/developer/videos/adaptive-noise-reduction-design-using-oneapi.html) targeting an image filtering app for FPGAs in which he leverages modern C++17 programming in order to ease some FPGA optimizations. The code is available on [GitHub](https://github.com/oneapi-src/oneAPI-samples/tree/master/DirectProgramming/DPC%2B%2BFPGA/ReferenceDesigns/anr) (as part of the oneAPI examples). However, this example is more complicated than necessary in order to illustrate the C++17 idioms and optimizations.
+
+Here we propose a simpler example based on a stencil computation along with an incremental strategy to attack the learning curve and an informative approach with plenty of examples. We cover key optimization techniques like loop unrolling function template (to avoid repeated statements) and Shift Register Pattern (SRP data structure and shift operation). We also want to cover the use of High Bandwidth Memory (HBM) modules within oneAPI, ease their use thanks to C++17 metaprogramming and evaluate its impact on performance. We conduct the experiments on a Stratix 10 MX with 32 HBM modules (from BittWare) that we have configured recently so that it can be targeted by oneAPI. 
+
+One of the key takeaways of this chapter is that leveraging the main C++ design principles (like "design for for easy extension" --aka Open-Closed principle--, "separation of concerns", --aka Single-responsibility principle--, and "simplify change principle", aka --Don't repeat yourself principle--) are actually valid and more than advisable for FPGA programming.
 
 ***Documentation***:  The [DPC++ FPGA Code Samples Guide](https://software.intel.com/content/www/us/en/develop/articles/explore-dpcpp-through-intel-fpga-code-samples.html) helps you to navigate the samples and build your knowledge of DPC++ for FPGA. <br>
 The [oneAPI DPC++ FPGA Optimization Guide](https://software.intel.com/content/www/us/en/develop/documentation/oneapi-fpga-optimization-guide) is the reference manual for targeting FPGAs through DPC++. <br>
@@ -8,11 +15,11 @@ The [oneAPI Programming Guide](https://software.intel.com/en-us/oneapi-programmi
 
 | Optimized for                     | Description
 ---                                 |---
-| OS                                | Linux* Ubuntu* 18.04/20.04, RHEL*/CentOS* 8, SUSE* 15; Windows* 10
-| Hardware                          | Intel® Programmable Acceleration Card (PAC) with Intel Arria® 10 GX FPGA <br> Intel® FPGA Programmable Acceleration Card (PAC) D5005 (with Intel Stratix® 10 SX) <br> Intel® FPGA 3rd party / custom platforms with oneAPI support <br> *__Note__: Intel® FPGA PAC hardware is only compatible with Ubuntu 18.04*
+| OS                                | Linux* RHEL*/CentOS* 8
+| Hardware                          | Intel® Stratix 10 MX with 32 HBM modules <br> Intel® FPGA 3rd party / custom platforms with oneAPI support 
 | Software                          | Intel® oneAPI DPC++ Compiler <br> Intel® FPGA Add-On for oneAPI Base Toolkit
-| What you will learn               | Why to separate host and device code compilation in your FPGA project <br> How to use the `-reuse-exe` and device link methods <br> Which method to choose for your project
-| Time to complete                  | 15 minutes
+| What you will learn               | C++17 idioms and optimizations for FPGA using the stencil computation as a running example
+| Time to complete                  | 1 hour
 
 
 

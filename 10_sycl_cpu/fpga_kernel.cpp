@@ -116,7 +116,7 @@ void run_fpga_kernel(FloatVector& in, FloatVector& m, FloatVector& out){
     std::vector<sycl::event> events(NumRep);
     auto start = std::chrono::high_resolution_clock::now();
     fpga_tools::UnrolledLoop<NumRep>([&](auto k){
-      events[k] = RunKernel<k,NumRep>(q, input, mask, output);});
+      events[k] = RunKernel<k,NumRep>(q, in, m, out);});
     q.wait();
     auto end = std::chrono::high_resolution_clock::now();
     std::cout << "Time FPGA: "<< std::chrono::duration<double,std::milli>(end - start).count() << " ms.\n";

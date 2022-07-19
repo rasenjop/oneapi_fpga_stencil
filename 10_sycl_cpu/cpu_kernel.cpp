@@ -1,56 +1,66 @@
 
 #include <CL/sycl.hpp>
+#include "dpc_common.hpp"
 #include "constants.hpp"
 using namespace sycl;
+
+static void ReportTimeCPU(const std::string &msg, event e) {
+  cl_ulong time_start =
+      e.get_profiling_info<info::event_profiling::command_start>();
+  cl_ulong time_end =
+      e.get_profiling_info<info::event_profiling::command_end>();
+  double elapsed = (time_end - time_start) / 1e6;
+  std::cout << msg << ": "<< elapsed << " milliseconds\n";
+}
 
 void run_cpu_kernel(FloatVector& in, FloatVector& m, FloatVector& out){
       // Select either the FPGA emulator or FPGA device
 
-  ext::intel::cpu_selector device_selector;
   try {
+    cpu_selector device_selector;
     auto prop_list = property_list{property::queue::enable_profiling()};
     queue q(device_selector, dpc_common::exception_handler, prop_list);
 
+    range<2> alloc_range(kRows, kCols);
+    range<2> stencil_range(kRows-2, kCols-2);
     auto start = std::chrono::high_resolution_clock::now();
-    buffer b_input{in};
+    buffer<float,2> b_input{in.data(),alloc_range};
     buffer b_mask{m};
-    buffer b_output{out};
+    buffer<float,2> b_output{out.data(),alloc_range};
     // submit the kernel
     auto e = q.submit([&](handler &h) {
       // Data accessors
       accessor input{b_input, h, read_only};
       accessor mask{b_mask, h, read_only};
-      accessor output{b_output, h, write_only, noInit};
+      accessor output{b_output, h, write_only, no_init};
 
       // Kernel executes with pipeline parallelism on the FPGA.
       // Use kernel_args_restrict to specify that input, mask, and output do not alias.
-      h.parallel_for(1UL, static_cast<unsigned long>(kRows-1), [&](int i){
-        int crow_base=i*kCols;
-        int prow_base = crow_base - kCols;
-        int nrow_base = crow_base + kCols;
-        for(int j=1; j<kCols-1; j++){
-        float tmp = mask[0] * input[prow_base + j - 1] + 
-                    mask[1] * input[prow_base + j    ] +
-                    mask[2] * input[prow_base + j + 1] +
-                    mask[3] * input[crow_base + j - 1] +
-                    mask[4] * input[crow_base + j    ] +
-                    mask[5] * input[crow_base + j + 1] +
-                    mask[6] * input[nrow_base + j - 1] +
-                    mask[7] * input[nrow_base + j    ] +
-                    mask[8] * input[nrow_base + j + 1] ;
-        res[crow_base+j] = tmp;
-        }
+      h.parallel_for(stencil_range, [=](id<2> idx){
+        int i=idx[0]+1;
+        int j=idx[1]+1;
+        float tmp = mask[0] * input[i-1][j-1] + 
+                    mask[1] * input[i-1][ j ] +
+                    mask[2] * input[i-1][j+1] +
+                    mask[3] * input[ i ][j-1] +
+                    mask[4] * input[ i ][ j ] +
+                    mask[5] * input[ i ][j+1] +
+                    mask[6] * input[i+1][j-1] +
+                    mask[7] * input[i+1][ j ] +
+                    mask[8] * input[i+1][j+1] ;
+        output[i][j] = tmp;
       });
-    }).wait();
+    });
+    q.wait();
     auto end = std::chrono::high_resolution_clock::now();
-    std::cout << "Time CPU: "<< std::chrono::duration<double,std::milli>(end - start).count() << " ms.\n";
-
-  } catch (exception const &e0) {
+    std::cout << "Total time CPU sycl: "<< std::chrono::duration<double,std::milli>(end - start).count() << " ms.\n";
+    ReportTimeCPU("CPU Stencil in SYCL. Kernel Time",e);
+  } catch (exception const &ex) {
     // Catches exceptions in the host code
-    std::cerr << "Caught a SYCL host exception:\n" << e0.what() << "\n";
+    std::cerr << "Caught a SYCL host exception:\n" << ex.what() << "\n";
 
     // Most likely the runtime couldn't find FPGA hardware!
-    if (e.code().value() == CL_DEVICE_NOT_FOUND) {
+    if (ex.code().value() == CL_DEVICE_NOT_FOUND) {
       std::cerr << "Please ensure that your CPU device is properly configured.\n";
     }
     std::terminate();
