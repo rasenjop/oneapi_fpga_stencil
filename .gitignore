@@ -1,8 +1,8 @@
-stencil.fpga_emu
-stencil.fpga
 *.o
 *.tgz
 *.a
 *.prj
+*.fpga
+*.fpga_emu
 settings.json
 
