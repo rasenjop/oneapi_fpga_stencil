@@ -50,9 +50,10 @@ sycl::event RunKernel(queue& q, FloatVector& in, FloatVector& m,
     constexpr int begin = Replica * (kRows-2) / NumReplicas + 1;
     constexpr int end = (Replica+1) * (kRows-2) / NumReplicas + 1;
     // create the device buffers
-    buffer b_input{in.begin()+(begin-1)*kCols, in.begin()+(end+1)*kCols, oneapi::tbb::cache_aligned_allocator<float>{}};
-    buffer b_mask{m, oneapi::tbb::cache_aligned_allocator<float>{}};
-    buffer b_output{out.begin()+begin*kCols, out.begin()+end*kCols, oneapi::tbb::cache_aligned_allocator<float>{}};
+    oneapi::tbb::cache_aligned_allocator<float> myAllocator{};
+    buffer b_input{in.begin()+(begin-1)*kCols, in.begin()+(end+1)*kCols, myAllocator};
+    buffer b_mask{m, myAllocator};
+    buffer b_output{out.begin()+begin*kCols, out.begin()+end*kCols, myAllocator};
     b_output.set_final_data(out.begin()+begin*kCols);
     b_output.set_write_back();
     //printf("Replica: %d -> begin:%d; end:%d;   buffer_b:%d; buffer_e:%d\n", Replica,begin,end, (begin-1)*kCols, (end+1)*kCols);

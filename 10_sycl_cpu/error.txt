@@ -1,0 +1,4 @@
+cpu_kernel.cpp:22:10: error: variable has incomplete type 'void'
+    auto e = q.submit([&](handler &h) {
+         ^
+1 error generated.

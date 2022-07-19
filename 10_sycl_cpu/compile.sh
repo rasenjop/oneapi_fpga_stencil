@@ -1,5 +1,12 @@
-rm -rf stencil.fpga.prj
+rm -rf fpga_kernel.a.prj fpga_kernel.a
 date
-echo "Compile Host"
-time dpcpp -fintelfpga -Xshardware -Xsboard=s10mx:p520_hpc_m210h_g3x16 host.cpp -o stencil.fpga -fbracket-depth=3000 -O3 -ltbb
+echo "Compile CPU kernel"
+echo dpcpp cpu_kernel.cpp -c -o cpu_kernel.o -O3
+dpcpp cpu_kernel.cpp -c -o cpu_kernel.o -O3
+echo "Compile FPGA kernel"
+echo dpcpp -fintelfpga -fsycl-link=image -Xshardware -Xsboard=s10mx:p520_hpc_m210h_g3x16 fpga_kernel.cpp -o fpga_kernel.a -ltbb -O3
+time dpcpp -fintelfpga -fsycl-link=image -Xshardware -Xsboard=s10mx:p520_hpc_m210h_g3x16 fpga_kernel.cpp -o fpga_kernel.a -ltbb -O3
+echo "Link with main kernel"
+echo dpcpp -fintelfpga main.cpp cpu_kernel.o fpga_kernel.a -o main.fpga -ltbb 
+dpcpp -fintelfpga main.cpp cpu_kernel.o fpga_kernel.a -o main.fpga  -ltbb
 date

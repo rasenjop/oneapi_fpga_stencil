@@ -35,7 +35,6 @@ void gold_stencil(const FloatVector& input, const FloatVector& mask, FloatVector
 }
 
 void parallel_stencil(const FloatVector& input, const FloatVector& mask, FloatVector& res){
-
   tbb::parallel_for(1UL, static_cast<unsigned long>(kRows-1), [&](int i){
     int crow_base=i*kCols;
     int prow_base = crow_base - kCols;
@@ -71,10 +70,9 @@ int main() {
   // Test the results
   FloatVector gold_output(kArraySize); 
   auto start = std::chrono::high_resolution_clock::now();
-  //gold_stencil(input, mask, gold_output);
-  parallel_stencil(input, mask, gold_output);
+  gold_stencil(input, mask, gold_output);
   auto end = std::chrono::high_resolution_clock::now();
-  std::cout << "Time CPU: "<< std::chrono::duration<double,std::milli>(end - start).count() << " ms.\n";
+  std::cout << "Time CPU seq: "<< std::chrono::duration<double,std::milli>(end - start).count() << " ms.\n";
   size_t incorrect = 0;
   for (size_t i = 1; i < kRows-1; i++) {
     for (size_t j = 1; j < kCols-1; j++) {
@@ -85,6 +83,12 @@ int main() {
       }
     }
   }
+
+  start = std::chrono::high_resolution_clock::now();
+  parallel_stencil(input, mask, gold_output);
+  end = std::chrono::high_resolution_clock::now();
+  std::cout << "Time CPU tbb::parallel_for: "<< std::chrono::duration<double,std::milli>(end - start).count() << " ms.\n";
+  
 
   // Summarize results
   if (!incorrect) {

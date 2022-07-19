@@ -12,3 +12,4 @@ constexpr size_t kArraySize = kRows * kCols;
 using FloatVector = std::vector<float,oneapi::tbb::cache_aligned_allocator<float>>; 
 
 void run_fpga_kernel(FloatVector& in, FloatVector& m, FloatVector& out);
+void run_cpu_kernel(FloatVector& in, FloatVector& m, FloatVector& out);
