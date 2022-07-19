@@ -1,10 +1,8 @@
 stencil.fpga_emu
 stencil.fpga
 *.o
-dev_image.prj/
 *.tgz
-dev_image.a
-stencil.a
-stencil.fpga.prj
+*.a
+*.prj
 settings.json
 
