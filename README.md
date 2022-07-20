@@ -1,11 +1,7 @@
 
 # Modern C++17 features to optimize FPGA SYCL applications
 
-To get a FPGA optimized implementation the code should be as simple as possible, it should maximize the amount of information that is known at compile-time and it should use some idioms that the compiler can effectively transform into "HW" (the bitstream), like the Shift Register Pattern (SRP). This translates into cluttered source codes with repeated statements (redundancies) and error prone constructions that become a challenge in terms of maintainability. Counterintuitively, using **high-level** C++17 features (like template metaprogramming, extensive use of "constexpr" and "if constexpr", variadic templates, lambdas, non-type template parameters, etc.) can result in very efficient **low-level** FPGA implementations that at the same time reduce the programming effort and increase code maintainability.
-
-Tanner Young-Schultz recently delivered an inspiring [webinar](https://www.intel.com/content/www/us/en/developer/videos/adaptive-noise-reduction-design-using-oneapi.html) targeting an image filtering app for FPGAs in which he leverages modern C++17 programming in order to ease some FPGA optimizations. The code is available on [GitHub](https://github.com/oneapi-src/oneAPI-samples/tree/master/DirectProgramming/DPC%2B%2BFPGA/ReferenceDesigns/anr) (as part of the oneAPI examples). However, this example is more complicated than necessary in order to illustrate the C++17 idioms and optimizations.
-
-Here we propose a simpler example based on a stencil computation along with an incremental strategy to attack the learning curve and an informative approach with plenty of examples. We cover key optimization techniques like loop unrolling function template (to avoid repeated statements) and Shift Register Pattern (SRP data structure and shift operation). We also want to cover the use of High Bandwidth Memory (HBM) modules within oneAPI, ease their use thanks to C++17 metaprogramming and evaluate its impact on performance. We conduct the experiments on a Stratix 10 MX with 32 HBM modules (from BittWare) that we have configured recently so that it can be targeted by oneAPI. 
+We propose a simple running example (based on a stencil computation) that is iteratively improved using FPGA specific optimizations, such us loop unrolling, kernel replication, High Bandwidth Memory (HBM) modules exploitation and the Shift Register Pattern (SRP). To ease the implementation of these optimizations we leverage C++17 language features as metaprogramming and templates. We follow an incremental strategy to attack the learning curve and an informative approach with plenty of examples. We conduct the experiments on a Stratix 10 MX with 32 HBM modules (from BittWare) that we have configured recently so that it can be targeted by oneAPI. 
 
 One of the key takeaways of this chapter is that leveraging the main C++ design principles (like "design for for easy extension" --aka Open-Closed principle--, "separation of concerns", --aka Single-responsibility principle--, and "simplify change principle", aka --Don't repeat yourself principle--) are actually valid and more than advisable for FPGA programming.
 
@@ -22,59 +18,90 @@ The [oneAPI Programming Guide](https://software.intel.com/en-us/oneapi-programmi
 | Time to complete                  | 1 hour
 
 
-
 ## Purpose
-Intel® oneAPI DPC++ Compiler only supports ahead-of-time (AoT) compilation for FPGA, which means that an FPGA device image is generated at compile time. The FPGA device image generation process can take hours to complete. Suppose you make a change that is exclusive to the host code. In that case, it is more efficient to recompile your host code only, re-using the existing FPGA device image and circumventing the time-consuming device compilation process.
 
-The Intel® oneAPI DPC++ Compiler provides two different mechanisms to separate device code and host code compilation.
-* Passing the `-reuse-exe=<exe_name>` flag to `dpcpp` instructs the compiler to attempt to reuse the existing FPGA device image.
-* The more explicit "device link" method requires you to separate the host and device code into separate files. When a code change only applies to host-only files, an FPGA device image is not regenerated.
+To get a FPGA optimized implementation the code should be as simple as possible, it should maximize the amount of information that is known at compile-time and it should use some idioms that the compiler can effectively transform into "HW" (the bitstream), like the Shift Register Pattern (SRP). This translates into cluttered source codes with repeated statements (redundancies) and error prone constructions that become a challenge in terms of maintainability. Counterintuitively, using **high-level** C++17 features (like template metaprogramming, extensive use of "constexpr" and "if constexpr", variadic templates, lambdas, non-type template parameters, etc.) can result in very efficient **low-level** FPGA implementations that at the same time reduce the programming effort and increase code maintainability.
 
-This tutorial explains both mechanisms and the pros and cons of each. The included code sample demonstrates the device link method but does **not** demonstrate the use of the `-reuse-exe` flag.
+Tanner Young-Schultz recently delivered an inspiring [webinar](https://www.intel.com/content/www/us/en/developer/videos/adaptive-noise-reduction-design-using-oneapi.html) targeting an image filtering app (ANR, Adaptive Noise Reduction) for FPGAs in which he leverages modern C++17 programming in order to ease some FPGA optimizations. The code is available on [GitHub](https://github.com/oneapi-src/oneAPI-samples/tree/master/DirectProgramming/DPC%2B%2BFPGA/ReferenceDesigns/anr) (as part of the oneAPI examples). However, the ANR application is more complicated than necessary in order to illustrate the C++17 idioms and optimizations. Here we follows Tanner's approach and use some of his libraries (loop unrolling, shift register, etc), but using a simpler example and adding some additional optimizations like kernel replication for data-level parallelism exploitation.
 
-### Using the `-reuse-exe` flag
+This tutorial explains the evolution of a canonic stencil algorithm and the required transformations needed to be efficiently executed on an FPGA. To follow this evolution, please have a look a the following directory structure:
 
-If the device code and options affecting the device have not changed since the previous compilation, passing the `-reuse-exe=<exe_name>` flag to `dpcpp` instructs the compiler to extract the compiled FPGA binary from the existing executable and package it into the new executable, saving the device compilation time.
+### Optimizing the `stencil` code for FPGA devices
 
-**Sample usage:**
+1. Naive CPU-like implementation (**00_naive**)
+
+
+
+2. Baseline FPGA implementation (**01_baseline**)
+
+3. Plus High Bandwidth Memory enabled (**02_hbm**)
+
+
+4. Plus Shift Register Pattern optimization (**03_srp**)
+
+
+5. Plus Loop Unrolling (pragma) (**04_srp_unroll**)
+
+
+6. Plus Loop Unrolling (template) (**05_srp_template**)
+
+
+7. Plus Data-level kernel replication (**06_kreplic**)
+
+
+8. Plus Alternative Shift Register (**07_newsrp_kreplic**)
+
+
+9. Plus Loop Flattening (**08_1loop**)
+
+10. Compare with Parallel CPU implementation in TBB (**09_parallel_for**)
+
+
+11. Compare with Parallel CPU impl. in SYCL (**10_sycl_cpu**)
+
+
+
+### **Performance on FPGA Stratix 10 MX:**
+
+| Version                     | Throughput (M elements/msec)
+|---                          |---
+| 00_naive                    | 0.892  
+| 01_baseline                 | 46.8  
+| 02_hbm                      | 46.8  
+| 03_srp                      |  
+| 04_srp_unroll               | 132  
+| 05_srp_template             | 132  
+| 06_kreplic   (2 kernels)    | 167  
+| 07_newsrp_kreplic (16 ker, 2HBM/ker) | 4,194,304  
+| 08_1loop (32 ker, 1HBM/ker) | 12,427,567  
+| 09_parallel_for (TBB 8 core - 2th/core) | 5,162,220  
+| 10_sycl_cpu (SYCL 8 cores - 2th/core)   | 3,901,678  
+
+
+
+### **Emulation and Compilation instructions:** (work in progress)
+
+For emulation (FPGA emulation on CPU) use
 
 ```
-# Initial compilation
-dpcpp <files.cpp> -o out.fpga -Xshardware -fintelfpga
+# Emulation
+./emu.sh
+./stencil.fpga_emu
 ```
-The initial compilation generates an FPGA device image, which takes several hours. Now, make some changes to the host code.
+
+For the real execution on the FPGA use
 ```
-# Subsequent recompilation
-dpcpp <files.cpp> -o out.fpga -reuse-exe=out.fpga -Xshardware -fintelfpga
+# FPGA Compilation
+./compile.sh
+./stencil.fpga
 ```
-If `out.fpga` does not exist, `-reuse-exe` is ignored and the FPGA device image is regenerated. This will always be the case the first time a project is compiled.
 
-If `out.fpga` is found, the compiler checks whether any changes affecting the FPGA device code have been made since the last compilation. If no such changes are detected, the compiler reuses the existing FPGA binary, and only the host code is recompiled. The recompilation process takes a few minutes. Note that the device code is partially re-compiled (similar to a report flow compile) to check that the FPGA binary can safely be reused.
-
-If `out.fpga` is found but the compiler cannot prove that the FPGA device code will yield a result identical to the last compilation, a warning is printed and the FPGA device code is fully recompiled. Since the compiler checks must be conservative, spurious recompilations can sometimes occur when using `-reuse-exe`.
-
-### Using the device link method
-
-The program accompanying this tutorial is separated into two files, `host.cpp` and `kernel.cpp`. Only the `kernel. cpp` file contains device code.
-
-In the normal compilation process, FPGA device image generation happens at link time. As a result, any change to either `host.cpp` or `kernel.cpp` will trigger an FPGA device image's regeneration.
-
-```
-# normal compile command
-dpcpp -fintelfpga host.cpp kernel.cpp -Xshardware -o link.fpga
-```
 
 The following graph depicts this compilation process:
 
 ![](normal_compile.png)
 
 
-If you want to iterate on the host code and avoid long compile time for your FPGA device, consider using a device link to separate device and host compilation:
-
-```
-# device link command
-dpcpp -fintelfpga -fsycl-link=image <input files> [options]
-```
 
 The compilation is a 3-step process:
 
@@ -107,12 +134,7 @@ The following graph depicts the device link compilation process:
 
 ![](device_link.png)
 
-### Which method to use?
-Of the two methods described, `-reuse-exe` is easier to use. It also allows you to keep your host and device code as single source, which is preferred for small programs.
 
-For larger and more complex projects, the device link method has the advantage of giving you complete control over the compiler's behavior.
-* When using `-reuse-exe`, the compiler must partially recompile and then analyze the device code to ensure that it is unchanged. This takes several minutes for larger designs. Compiling separate files does not incur this extra time.
-* When using `-reuse-exe`, you may occasionally encounter a "false positive" where the compiler wrongly believes that it must recompile your device code. In a single source file, the device and host code are coupled, so some changes to the host code _can_ change the compiler's view of the device code. The compiler will always behave conservatively and trigger a full recompilation if it cannot prove that reusing the previous FPGA binary is safe. Compiling separate files eliminates this possibility.
 
 
 ## Key Concepts
@@ -127,7 +149,7 @@ Code samples are licensed under the MIT license. See
 Third party program Licenses can be found here: [third-party-programs.txt](https://github.com/oneapi-src/oneAPI-samples/blob/master/third-party-programs.txt)
 
 
-## Building the `fast_recompile` Tutorial
+## Building the `stencil` Tutorial
 
 ### Include Files
 The included header `dpc_common.hpp` is located at `%ONEAPI_ROOT%\dev-utilities\latest\include` on your development system.
@@ -138,23 +160,8 @@ If running a sample in the Intel DevCloud, remember that you must specify the ty
 When compiling for FPGA hardware, it is recommended to increase the job timeout to 12h.
 
 
-### Using Visual Studio Code*  (Optional)
 
-You can use Visual Studio Code (VS Code) extensions to set your environment, create launch configurations,
-and browse and download samples.
-
-The basic steps to build and run a sample using VS Code include:
- - Download a sample using the extension **Code Sample Browser for Intel oneAPI Toolkits**.
- - Configure the oneAPI environment with the extension **Environment Configurator for Intel oneAPI Toolkits**.
- - Open a Terminal in VS Code (**Terminal>New Terminal**).
- - Run the sample in the VS Code terminal using the instructions below.
-
-To learn more about the extensions and how to configure the oneAPI environment, see
-[Using Visual Studio Code with Intel® oneAPI Toolkits](https://software.intel.com/content/www/us/en/develop/documentation/using-vs-code-with-intel-oneapi/top.html).
-
-After learning how to use the extensions for Intel oneAPI Toolkits, return to this readme for instructions on how to build and run a sample.
-
-### On a Linux* System
+### Work in progress: On a Linux* System
 
 1. Generate the `Makefile` by running `cmake`.
      ```
@@ -188,61 +195,49 @@ After learning how to use the extensions for Intel oneAPI Toolkits, return to th
      ```
 3. (Optional) As the above hardware compile may take several hours to complete, FPGA precompiled binaries (compatible with Linux* Ubuntu* 18.04) can be downloaded <a href="https://iotdk.intel.com/fpga-precompiled-binaries/latest/fast_recompile.fpga.tar.gz" download>here</a>.
 
-### On a Windows* System
-
-1. Generate the `Makefile` by running `cmake`.
-     ```
-   mkdir build
-   cd build
-   ```
-   To compile for the Intel® PAC with Intel Arria® 10 GX FPGA, run `cmake` using the command:
-    ```
-    cmake -G "NMake Makefiles" ..
-   ```
-   Alternatively, to compile for the Intel® FPGA PAC D5005 (with Intel Stratix® 10 SX), run `cmake` using the command:
-
-   ```
-   cmake -G "NMake Makefiles" .. -DFPGA_BOARD=intel_s10sx_pac:pac_s10
-   ```
-   You can also compile for a custom FPGA platform. Ensure that the board support package is installed on your system. Then run `cmake` using the command:
-   ```
-   cmake -G "NMake Makefiles" .. -DFPGA_BOARD=<board-support-package>:<board-variant>
-   ```
-
-2. Compile the design through the generated `Makefile`. The following build targets are provided, matching the recommended development flow:
-
-   * Compile for emulation (fast compile time, targets emulated FPGA device):
-     ```
-     nmake fpga_emu
-     ```
-   * Compile for FPGA hardware (longer compile time, targets FPGA device):
-     ```
-     nmake fpga
-     ```
-
-*Note:* The Intel® PAC with Intel Arria® 10 GX FPGA and Intel® FPGA PAC D5005 (with Intel Stratix® 10 SX) do not support Windows*. Compiling to FPGA hardware on Windows* requires a third-party or custom Board Support Package (BSP) with Windows* support.<br>
-*Note:* If you encounter any issues with long paths when compiling under Windows*, you may have to create your ‘build’ directory in a shorter path, for example c:\samples\build.  You can then run cmake from that directory, and provide cmake with the full path to your sample directory.
-
- ### In Third-Party Integrated Development Environments (IDEs)
-
-You can compile and run this tutorial in the Eclipse* IDE (in Linux*) and the Visual Studio* IDE (in Windows*). For instructions, refer to the following link: [Intel® oneAPI DPC++ FPGA Workflows on Third-Party IDEs](https://software.intel.com/en-us/articles/intel-oneapi-dpcpp-fpga-workflow-on-ide)
 
 
-## Running the Sample
-
- 1. Run the sample on the FPGA emulator (the kernel executes on the CPU):
-     ```
-     ./fast_recompile.fpga_emu     (Linux)
-     fast_recompile.fpga_emu.exe   (Windows)
-     ```
-2. Run the sample on the FPGA device:
-     ```
-     ./fast_recompile.fpga         (Linux)
-     ```
-
-### Example of Output
+### Example of Output (10_sycl_cpu)
 ```
+FPGA Stencil with HBM. Time IP 0: 2.73709 milliseconds                         
+FPGA Stencil with HBM. Time IP 1: 2.59427 milliseconds                         
+FPGA Stencil with HBM. Time IP 2: 2.57754 milliseconds                         
+FPGA Stencil with HBM. Time IP 3: 2.60263 milliseconds                         
+FPGA Stencil with HBM. Time IP 4: 2.58751 milliseconds                         
+FPGA Stencil with HBM. Time IP 5: 2.60341 milliseconds                         
+FPGA Stencil with HBM. Time IP 6: 2.59619 milliseconds                         
+FPGA Stencil with HBM. Time IP 7: 2.59615 milliseconds                         
+FPGA Stencil with HBM. Time IP 8: 2.60307 milliseconds                         
+FPGA Stencil with HBM. Time IP 9: 2.59579 milliseconds                         
+FPGA Stencil with HBM. Time IP 10: 2.59859 milliseconds                        
+FPGA Stencil with HBM. Time IP 11: 2.5954 milliseconds                         
+FPGA Stencil with HBM. Time IP 12: 2.6003 milliseconds                         
+FPGA Stencil with HBM. Time IP 13: 2.59353 milliseconds                        
+FPGA Stencil with HBM. Time IP 14: 2.60412 milliseconds                        
+FPGA Stencil with HBM. Time IP 15: 2.59862 milliseconds                        
+FPGA Stencil with HBM. Time IP 16: 2.5882 milliseconds                         
+FPGA Stencil with HBM. Time IP 17: 2.55117 milliseconds                        
+FPGA Stencil with HBM. Time IP 18: 2.59665 milliseconds                        
+FPGA Stencil with HBM. Time IP 19: 2.5979 milliseconds                         
+FPGA Stencil with HBM. Time IP 20: 2.60135 milliseconds                        
+FPGA Stencil with HBM. Time IP 21: 2.59885 milliseconds                        
+FPGA Stencil with HBM. Time IP 22: 2.59378 milliseconds                        
+FPGA Stencil with HBM. Time IP 23: 2.59281 milliseconds                        
+FPGA Stencil with HBM. Time IP 24: 2.59014 milliseconds                        
+FPGA Stencil with HBM. Time IP 25: 2.60636 milliseconds                        
+FPGA Stencil with HBM. Time IP 26: 2.59406 milliseconds                        
+FPGA Stencil with HBM. Time IP 27: 2.60779 milliseconds                        
+FPGA Stencil with HBM. Time IP 28: 2.59006 milliseconds                        
+FPGA Stencil with HBM. Time IP 29: 2.58648 milliseconds                        
+FPGA Stencil with HBM. Time IP 30: 2.59117 milliseconds                        
+FPGA Stencil with HBM. Time IP 31: 2.58266 milliseconds                        
+Total time CPU sycl: 108.431 ms.
+CPU Stencil in SYCL. Kernel Time: 8.5971 milliseconds                          
+Time CPU seq: 27.5616 ms.
+Time CPU tbb::parallel_for: 6.56578 ms.
 PASSED: results are correct
+
 ```
+
 ### Discussion of Results
 Try modifying `host.cpp` to produce a different output message. Then, perform a host-only recompile via the device link method to see how quickly the design is recompiled.
