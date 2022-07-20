@@ -3,7 +3,7 @@
 
 We propose a simple running example (based on a stencil computation) that is iteratively improved using FPGA specific optimizations, such us loop unrolling, kernel replication, High Bandwidth Memory (HBM) modules exploitation and the Shift Register Pattern (SRP). To ease the implementation of these optimizations we leverage C++17 language features as metaprogramming and templates. We follow an incremental strategy to attack the learning curve and an informative approach with plenty of examples. We conduct the experiments on a Stratix 10 MX with 32 HBM modules (from BittWare) that we have configured recently so that it can be targeted by oneAPI. 
 
-One of the key takeaways of this chapter is that leveraging the main C++ design principles (like "design for for easy extension" --aka Open-Closed principle--, "separation of concerns", --aka Single-responsibility principle--, and "simplify change principle", aka --Don't repeat yourself principle--) are actually valid and more than advisable for FPGA programming.
+
 
 ***Documentation***:  The [DPC++ FPGA Code Samples Guide](https://software.intel.com/content/www/us/en/develop/articles/explore-dpcpp-through-intel-fpga-code-samples.html) helps you to navigate the samples and build your knowledge of DPC++ for FPGA. <br>
 The [oneAPI DPC++ FPGA Optimization Guide](https://software.intel.com/content/www/us/en/develop/documentation/oneapi-fpga-optimization-guide) is the reference manual for targeting FPGAs through DPC++. <br>
@@ -138,9 +138,9 @@ The following graph depicts the device link compilation process:
 
 
 ## Key Concepts
-* Why to separate host and device code compilation in your FPGA project
-* How to use the `-reuse-exe` and device link methods
-* Which method to choose for your project
+* FPGA kernel designs require specific optimizations tailores to the FPGA architecture
+* C++17 features ease the development of such optimizations
+* One of the key takeaways of this tutorial is that leveraging the main C++ design principles (like "design for for easy extension" --aka Open-Closed principle--, "separation of concerns", --aka Single-responsibility principle--, and "simplify change principle", aka --Don't repeat yourself principle--) are actually valid and more than advisable for FPGA programming.
 
 ## License
 Code samples are licensed under the MIT license. See
@@ -154,7 +154,7 @@ Third party program Licenses can be found here: [third-party-programs.txt](https
 ### Include Files
 The included header `dpc_common.hpp` is located at `%ONEAPI_ROOT%\dev-utilities\latest\include` on your development system.
 
-### Running Samples in DevCloud
+### Running Samples in DevCloud (not tested yet)
 If running a sample in the Intel DevCloud, remember that you must specify the type of compute node and whether to run in batch or interactive mode. Compiles to FPGA are only supported on fpga_compile nodes. Executing programs on FPGA hardware is only supported on fpga_runtime nodes of the appropriate type, such as fpga_runtime:arria10 or fpga_runtime:stratix10.  Neither compiling nor executing programs on FPGA hardware are supported on the login nodes. For more information, see the Intel® oneAPI Base Toolkit Get Started Guide ([https://devcloud.intel.com/oneapi/documentation/base-toolkit/](https://devcloud.intel.com/oneapi/documentation/base-toolkit/)).
 
 When compiling for FPGA hardware, it is recommended to increase the job timeout to 12h.
