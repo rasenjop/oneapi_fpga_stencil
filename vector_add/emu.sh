@@ -1,0 +1,1 @@
+dpcpp -fintelfpga -DFPGA_EMULATOR vector-add-repl.cpp -o vadd.fpga_emu -O3 -ltbb
