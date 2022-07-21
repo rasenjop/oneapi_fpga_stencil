@@ -74,10 +74,14 @@ This tutorial explains the evolution of a canonic stencil algorithm and the requ
 | 06_kreplic   (2 kernels)    | 166 
 | 07_newsrp_kreplic (16 ker, 2HBM/ker) | 4,142  
 | 08_1loop (32 ker, 1HBM/ker) | 12,427
-| 09_parallel_for (TBB 8 core - 2th/core) | 5,162 
-| 10_sycl_cpu (SYCL 8 cores - 2th/core)   | 3,947 
 
 
+### **Performance on CPU Core i7-7820X (8 cores - 2th/core):**
+
+| Version                     | Throughput (M elements/sec)
+|---                          |---
+| 09_parallel_for (TBB) | 5,162 
+| 10_sycl_cpu (SYCL)   | 3,947 
 
 ### **Emulation and Compilation instructions:** (work in progress)
 
