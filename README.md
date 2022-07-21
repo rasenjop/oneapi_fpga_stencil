@@ -100,21 +100,14 @@ For the real execution on the FPGA use
 ./stencil.fpga
 ```
 
-
-The following graph depicts this compilation process:
-
-![](normal_compile.png)
-
-
-
-The compilation is a 3-step process:
+With more detail, the compilation is a 3-step process:
 
 1. Compile the device code:
 
    ```
-   dpcpp -fintelfpga -fsycl-link=image kernel.cpp -o dev_image.a -Xshardware
+   dpcpp -fintelfpga -fsycl-link=image kernel.cpp -o dev_image.a -Xshardware -Xsboard=s10mx:p520_hpc_m210h_g3x16
    ```
-   Input files should include all source files that contain device code. This step may take several hours.
+   Input files should include all source files that contain device code. This step may take several hours. The `-Xsboard` flag states the FPGA board we are using (Stratix 10MX)
 
 
 2. Compile the host code:
@@ -128,17 +121,11 @@ The compilation is a 3-step process:
 3. Create the device link:
 
    ```
-   dpcpp -fintelfpga host.o dev_image.a -o fast_recompile.fpga
+   dpcpp -fintelfpga host.o dev_image.a -o stencil.fpga
    ```
    The input should have N (N >= 0) host object files *(.o)* and one device image file *(.a)*. This takes seconds.
 
 **NOTE:** You only need to perform steps 2 and 3 when modifying host-only files.
-
-The following graph depicts the device link compilation process:
-
-![](device_link.png)
-
-
 
 
 ## Key Concepts
