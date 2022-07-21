@@ -63,19 +63,19 @@ This tutorial explains the evolution of a canonic stencil algorithm and the requ
 
 ### **Performance on FPGA Stratix 10 MX:**
 
-| Version                     | Throughput (M elements/msec)
+| Version                     | Throughput (M elements/sec)
 |---                          |---
 | 00_naive                    | 0.892  
-| 01_baseline                 | 46.8  
-| 02_hbm                      | 46.8  
-| 03_srp                      |  
+| 01_baseline                 | 47  
+| 02_hbm                      | 174  
+| 03_srp                      | 0.07
 | 04_srp_unroll               | 132  
 | 05_srp_template             | 132  
-| 06_kreplic   (2 kernels)    | 167  
-| 07_newsrp_kreplic (16 ker, 2HBM/ker) | 4,194,304  
-| 08_1loop (32 ker, 1HBM/ker) | 12,427,567  
-| 09_parallel_for (TBB 8 core - 2th/core) | 5,162,220  
-| 10_sycl_cpu (SYCL 8 cores - 2th/core)   | 3,901,678  
+| 06_kreplic   (2 kernels)    | 166 
+| 07_newsrp_kreplic (16 ker, 2HBM/ker) | 4,142  
+| 08_1loop (32 ker, 1HBM/ker) | 12,427
+| 09_parallel_for (TBB 8 core - 2th/core) | 5,162 
+| 10_sycl_cpu (SYCL 8 cores - 2th/core)   | 3,947 
 
 
 
