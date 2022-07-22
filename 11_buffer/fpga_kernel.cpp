@@ -33,14 +33,17 @@ sycl::event RunKernel(queue& q, buffer<float>& b_input, buffer<float>& b_mask,
     // submit the kernel
     auto e = q.submit([&](handler &h) {
       //Properties for HBM
-      //ext::oneapi::accessor_property_list HBM0{ext::intel::buffer_location<Replica*2>};
-      //ext::oneapi::accessor_property_list HBM0_noInit{no_init,ext::intel::buffer_location<Replica*2+1>};
-      ext::oneapi::accessor_property_list HBM0{ext::intel::buffer_location<Replica>};
-      ext::oneapi::accessor_property_list HBM0_noInit{no_init,ext::intel::buffer_location<Replica>};
+      //ext::oneapi::accessor_property_list HBM{ext::intel::buffer_location<Replica*2>};
+      //ext::oneapi::accessor_property_list HBM_noInit{no_init,ext::intel::buffer_location<Replica*2+1>};
+      ext::oneapi::accessor_property_list HBM{ext::intel::buffer_location<Replica>};
+      ext::oneapi::accessor_property_list HBM_noInit{no_init,ext::intel::buffer_location<Replica>};
+
+      //std::array<ext::oneapi::accessor_property_list<ext::intel::buffer_location>,32> HBM;
+      //fpga::tools::UnrolledLoop<32>([](int k){HBM[k]=ext::intel::buffer_location<k>;});
       // Data accessors
-      accessor input{b_input, h, /*read_only,*/ HBM0};
+      accessor input{b_input, h, /*read_only,*/ HBM};
       accessor mask{b_mask, h, read_only};
-      accessor output{b_output, h, write_only, HBM0_noInit};
+      accessor output{b_output, h, write_only, HBM_noInit};
 
       // Kernel executes with pipeline parallelism on the FPGA.
       // Use kernel_args_restrict to specify that input, mask, and output do not alias.
@@ -114,13 +117,14 @@ void run_fpga_kernel(FloatVector& in, FloatVector& m, FloatVector& out){
     // create the device buffers
     //oneapi::tbb::cache_aligned_allocator<float> myAllocator{};
     buffer b_mask{m};
-    std::vector<buffer<float>> b_input;
-    std::vector<buffer<float>> b_output;
+
     auto start = std::chrono::high_resolution_clock::now();
     { //begin scope for buffer life-span
+      std::vector<buffer<float>> b_input;
+      std::vector<buffer<float>> b_output;
       fpga_tools::UnrolledLoop<NumRep>([&](auto k){
-        b_input.push_back(buffer<float>{in.begin()+(begin[k]-1)*kCols, in.begin()+(end[k]+1)*kCols});
-        b_output.push_back(buffer<float>{out.begin()+begin[k]*kCols, out.begin()+end[k]*kCols});
+        b_input.emplace_back(in.begin()+(begin[k]-1)*kCols, in.begin()+(end[k]+1)*kCols);
+        b_output.emplace_back(out.begin()+begin[k]*kCols, out.begin()+end[k]*kCols);
         //b_output.set_final_data(out.begin()+begin*kCols);
         //b_output.set_write_back();
       }); 
