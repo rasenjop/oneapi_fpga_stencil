@@ -59,6 +59,8 @@ This tutorial explains the evolution of a canonic stencil algorithm and the requ
 
 10. Compare with Parallel CPU impl. in SYCL (**10_sycl_cpu**)
 
+      SYCL Implementation of a similar stencil code [here](https://github.com/Apress/data-parallel-CPP/blob/main/samples/Ch14_common_parallel_patterns/fig_14_14_stencil.cpp)
+
 11. Right version of 08_1loop that avoids kernel serialization (**11_buffer**)
    See [this forum post](https://community.intel.com/t5/Application-Acceleration-With/Data-level-parallelism-on-FPGA-with-kernel-replication-using/td-p/1397792) for a detailed explanation.
 
