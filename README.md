@@ -28,36 +28,39 @@ This tutorial explains the evolution of a canonic stencil algorithm and the requ
 
 ### Optimizing the `stencil` code for FPGA devices
 
-1. Naive CPU-like implementation (**00_naive**)
+0. Naive CPU-like implementation (**00_naive**)
 
 
 
-2. Baseline FPGA implementation (**01_baseline**)
+1. Baseline FPGA implementation (**01_baseline**)
 
-3. Plus High Bandwidth Memory enabled (**02_hbm**)
-
-
-4. Plus Shift Register Pattern optimization (**03_srp**)
+2. Plus High Bandwidth Memory enabled (**02_hbm**)
 
 
-5. Plus Loop Unrolling (pragma) (**04_srp_unroll**)
+3. Plus Shift Register Pattern optimization (**03_srp**)
 
 
-6. Plus Loop Unrolling (template) (**05_srp_template**)
+4. Plus Loop Unrolling (pragma) (**04_srp_unroll**)
 
 
-7. Plus Data-level kernel replication (**06_kreplic**)
+5. Plus Loop Unrolling (template) (**05_srp_template**)
 
 
-8. Plus Alternative Shift Register (**07_newsrp_kreplic**)
+6. Plus Data-level kernel replication (**06_kreplic**)
 
 
-9. Plus Loop Flattening (**08_1loop**)
-
-10. Compare with Parallel CPU implementation in TBB (**09_parallel_for**)
+7. Plus Alternative Shift Register (**07_newsrp_kreplic**)
 
 
-11. Compare with Parallel CPU impl. in SYCL (**10_sycl_cpu**)
+8. Plus Loop Flattening (**08_1loop**)
+
+9. Compare with Parallel CPU implementation in TBB (**09_parallel_for**)
+
+
+10. Compare with Parallel CPU impl. in SYCL (**10_sycl_cpu**)
+
+11. Right version of 08_1loop that avoids kernel serialization (**11_buffer**)
+   See [this forum post](https://community.intel.com/t5/Application-Acceleration-With/Data-level-parallelism-on-FPGA-with-kernel-replication-using/td-p/1397792) for a detailed explanation.
 
 
 
@@ -74,6 +77,7 @@ This tutorial explains the evolution of a canonic stencil algorithm and the requ
 | 06_kreplic   (2 kernels)    | 166 
 | 07_newsrp_kreplic (16 ker, 2HBM/ker) | 4,142  
 | 08_1loop (32 ker, 1HBM/ker) | 12,427
+| 11_buffer (32 ker, 1HBM/ker) | 6,100
 
 
 ### **Performance on CPU Core i7-7820X (8 cores - 2th/core):**
