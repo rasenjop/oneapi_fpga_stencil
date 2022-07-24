@@ -1,1 +1,1 @@
-dpcpp -fintelfpga -DFPGA_EMULATOR host.cpp -o stencil.fpga_emu -O3 -ltbb -fbracket-depth=3000
+dpcpp -fintelfpga -DFPGA_EMULATOR host.cpp -o stencil.fpga_emu -O3 -ltbb -I ../common/
